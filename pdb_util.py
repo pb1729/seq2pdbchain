@@ -1,7 +1,9 @@
+import numpy as np
 from collections import namedtuple
 
 
 PDBAtom = namedtuple("PDBAtom", ["name", "residue", "residue_id", "pos", "element"])
+ResidueExample = namedtuple("ResidueExample", ["atoms", "transform"])
 
 
 def get_record(line):
@@ -11,7 +13,7 @@ def get_record(line):
         residue = line[17:20].strip()
         residue_id = "%s%d" % (line[21], int(line[22:26]))
         chain_id = line[21]
-        pos = [float(line[30:38]), float(line[38:46]), float(line[46:54])]
+        pos = np.array([float(line[30:38]), float(line[38:46]), float(line[46:54])])
         element = line[76:78].strip()
         return PDBAtom(name, residue, residue_id, pos, element)
     return None

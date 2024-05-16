@@ -1,105 +1,129 @@
 import numpy as np
 from collections import defaultdict
 
-from pdb_util import parse_pdb, write_xyz
+from pdb_util import parse_pdb, write_xyz, ResidueExample
 
 
 # This file is meant for code generation.
-# Given a particular pdb file, we pick a representative of each
+# Given a particular pdb file, we pick some representatives of each
 # kind of amino acid from the file. We then generate python code
 # for a dict that contains these structures.
 
 
 PDB_PATH = "7sbp.pdb" # can obtain this file here: https://files.rcsb.org/download/7SBP.pdb
-DATA_DIR = None
-representative_list = [
-    "C972", "B509", "A1135", "A53",  "A136",
-    "A239", "A191", "A485",  "B49",  "A101",
-    "A390", "B129", "A731",  "A168", "A217",
-    "A50",  "A376", "B64",   "A170", "A401"
-]
+REPS_LIST = [ # list of representative residues
+    *["A%d" % i for i in range(50, 69)],
+    *["A%d" % i for i in range(78, 174)],
+    *["A%d" % i for i in range(186, 245)],
+    *["A%d" % i for i in range(256, 676)],
+    *["A%d" % i for i in range(689, 1000)]]
 
 
 def tounit(v):
     return v / np.linalg.norm(v)
 
+def get_unit_basis(CA_pos, C_pos):
+    """ return unit basis with orientations standardized so that
+        CA is on X axis and C is in XY plane
+        we assume that N is at the origin.
+        CA_pos: (3) - position of CA relative to N
+        C_pos:  (3) - position of C relative to N """
+    v = tounit(C_pos - CA_pos)
+    # make the basis vectors:
+    e_0 = tounit(CA_pos)
+    e_2 = tounit(np.cross(e_0, v))
+    e_1 = tounit(np.cross(e_2, e_0))
+    return e_0, e_1, e_2
+
+def extract_atom_positions(atom_name_list, blk):
+    ans = [None for name in atom_name_list]
+    for atom in blk:
+        if atom.name in atom_name_list:
+            idx = atom_name_list.index(atom.name)
+            assert ans[idx] is None, "duplicate atom in residue block!"
+            ans[idx] = atom.pos
+    return ans
+
 def normalize_positions(blk):
     """ standardize positions and orientations of atoms in a residue """
     # translate:
-    for atom in blk:
-        if atom.name == "N":
-            origin = np.array(atom.pos)
+    (origin,) = extract_atom_positions(["N"], blk)
     blk = [atom._replace(pos = np.array(atom.pos) - origin) for atom in blk]
     # rotate:
-    v_n, v_CA = None, None
-    for atom in blk:
-        if atom.name == "N_next":
-            v_n = atom.pos
-        elif atom.name == "CA":
-            v_CA = atom.pos
-    if v_n is None or v_CA is None: return False
-    rot_matrix = np.zeros((3,3))
-    rot_matrix[0] = tounit(v_n)
-    u = v_CA - v_n*(v_CA @ v_n)/(v_n @ v_n) # component of v_CA orthogonal to V_C
-    rot_matrix[1] = tounit(u)
-    rot_matrix[2] = np.cross(rot_matrix[0], rot_matrix[1]) # remaining orthonormal vector, right handed
+    (CA_pos, C_pos) = extract_atom_positions(["CA", "C"], blk)
+    rot_matrix = np.stack(get_unit_basis(CA_pos, C_pos), axis=0)
     return [atom._replace(pos = rot_matrix @ atom.pos) for atom in blk]
 
-def get_alpha_rotation(blk):
-    """ get the rotation angle between one alpha bond and the next.
-        requires that block be an output of normalize_positions. """
-    v_N, v_CA, v_Nn, V_CAn = None, None, None, None
-    for atom in blk:
-        if atom.name == "N":
-            v_N = atom.pos
-        elif atom.name == "CA":
-            v_CA = atom.pos
-        elif atom.name == "N_next":
-            v_Nn = atom.pos
-        elif atom.name == "CA_next":
-            v_CAn = atom.pos
-    if v_N is None or v_CA is None or v_Nn is None or v_CAn is None:
-        return False
-    v1 = (v_CA  - v_N )[1:] # project into y-z plane
-    v2 = (v_CAn - v_Nn)[1:] # project into y-z plane
-    return np.arccos(tounit(v1) @ tounit(v2))
+def get_transform(blk):
+    """ get the transform matrix between successive amino acids.
+        ASSUMES: the positions and orientations have already been normalized.
+        the result here will be based on the positions of the atoms in the next residue. """
+    (N_pos, CA_pos, C_pos) = extract_atom_positions(["N_next", "CA_next", "C_next"], blk)
+    # note that we use axis=-1 in this case because we the unit vectors to map to the next basis
+    return np.stack(get_unit_basis(CA_pos - N_pos, C_pos - N_pos), axis=-1)
 
 
-if __name__ == "__main__":
-    records = parse_pdb(PDB_PATH)
-    atoms = [record for record in records if record != None]
-    residue_blks = defaultdict(lambda: [])
+def get_residue_blocks(atoms):
+    ans = defaultdict(lambda: [])
     # add regular atoms
     for atom in atoms:
-        residue_blks[atom.residue_id].append(atom)
-    # append first N atom and CA atom of next residue
+        ans[atom.residue_id].append(atom)
+    # append atoms {N, CA, C} of next residue
     for atom in atoms:
-        if atom.name == "N" or atom.name == "CA":
+        if atom.name == "N" or atom.name == "CA" or atom.name == "C":
             chain, seq = atom.residue_id[0], int(atom.residue_id[1:])
             prev_residue_id = chain + str(seq - 1)
-            if prev_residue_id in residue_blks:
+            if prev_residue_id in ans:
                 newatom = atom._replace(residue_id = prev_residue_id, name = atom.name + "_next")
-                residue_blks[prev_residue_id].append(newatom)
-    for residue_id in representative_list:
-        blk = normalize_positions(residue_blks[residue_id])
-        if blk == False: print("failed!", residue_id)
-        else:
-            if DATA_DIR is not None:
-              fnm = "%s/%s_%s.xyz" % (DATA_DIR, blk[0].residue, residue_id)
-              write_xyz(fnm, blk)
-            print("%s: %d\u00b0" % (blk[0].residue, int(get_alpha_rotation(blk) * 180/3.1416)))
-    # wacky code generation part:
+                ans[prev_residue_id].append(newatom)
+    return ans
+
+
+def get_residue_examples(atoms):
+    residue_blks = get_residue_blocks(atoms)
+    residue_blks = {
+        residue_id: normalize_positions(residue_blks[residue_id])
+        for residue_id in REPS_LIST
+        if residue_id in residue_blks }
+    ans = defaultdict(lambda: [])
+    for residue_id in residue_blks:
+        blk = residue_blks[residue_id]
+        print(blk[0].residue_id, end="")
+        ans[blk[0].residue].append(ResidueExample(
+            [atom for atom in blk if atom.name not in {"CA_next", "C_next"}],
+            get_transform(blk)))
+    return ans
+
+
+def atom_repr(atom):
+    return "Atom(\"%s\", np.%s, \"%s\")" % (atom.name, repr(atom.pos), atom.element)
+
+def residue_example_repr(eg):
+    return "ResidueExample([\n            %s],\n        %s)" % (
+        ",\n            ".join([atom_repr(atom) for atom in eg.atoms]),
+        "np." + repr(eg.transform))
+
+def main():
+    atoms = parse_pdb(PDB_PATH)
+    residue_examples = get_residue_examples(atoms)
+    # clip so we don't end up with too many examples:
+    for residue in residue_examples:
+        residue_examples[residue] = residue_examples[residue][:10]
+        print(residue, len(residue_examples[residue]))
+    # code generation:
     print("\n\t--- Residue Construction Info: ---\n")
     print("{")
-    for residue_id in representative_list:
-        blk = normalize_positions(residue_blks[residue_id])
-        print("    \"%s\": [" % blk[0].residue)
-        for atom in blk:
-            if atom.name != "CA_next":
-                print("        Atom(\"%s\", np.%s, \"%s\")," % (atom.name, repr(atom.pos), atom.element))
+    for residue in residue_examples:
+        print("    \"%s\": [" % residue)
+        for eg in residue_examples[residue]:
+            print("        %s," % residue_example_repr(eg))
         print("    ],")
     print("}")
     print()
+
+
+if __name__ == "__main__":
+    main()
 
 
 

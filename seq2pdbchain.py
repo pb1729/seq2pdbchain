@@ -3,9 +3,6 @@ import numpy as np
 from amino_data import letter_code, structures
 
 
-helix_step_angle = 160 * np.pi / 180
-
-
 
 def leftpad(s, n):
     return " "*(n-len(s)) + s
@@ -46,26 +43,21 @@ def pdb_chain(sequence):
     i_atom = 0
     for i_seq, c in enumerate(sequence):
         residue = letter_code[c]
-        struct = structures[residue]
-        rotate = np.array([
-            [1.0,           0.0,            0.0],
-            [0.0, np.cos(helix_step_angle), -np.sin(helix_step_angle)],
-            [0.0, np.sin(helix_step_angle),  np.cos(helix_step_angle)]])
-        new_transform = transform @ rotate
-        for atom in struct:
-            transformed_atom = atom._replace(pos = cursor + (new_transform @ atom.pos))
+        struct = structures[residue][np.random.randint(len(structures[residue]))]
+        for atom in struct.atoms:
+            transformed_atom = atom._replace(pos = cursor + (transform @ atom.pos))
             if atom.name != "N_next":
                 lines.append(pdb_line(transformed_atom, i_atom, i_seq, residue))
                 i_atom += 1
-            else: # NOTE: This relies on N_next being the last element in the list!
+            else:
                 cursor = transformed_atom.pos
-                break
-        transform = new_transform
+                break # NOTE: N_next should be the last element in the list!
+        transform = transform @ struct.transform
     return "\n".join(lines)
 
 
 if __name__ == "__main__":
-    print(pdb_chain(input("enter a sequence to be converted to a pdb file > ")))
+    print(pdb_chain(input()))
     
 
 
