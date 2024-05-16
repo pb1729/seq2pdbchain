@@ -21,7 +21,9 @@ def parse_pdb(fnm):
     ans = []
     with open(fnm, "r") as f:
         for line in f.readlines():
-            ans.append(get_record(line))
+            record = get_record(line)
+            if record is not None:
+                ans.append(record)
     return ans
 
 

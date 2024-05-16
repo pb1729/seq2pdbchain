@@ -37,27 +37,30 @@ def pdb_line(atom, i_atom, i_seq, residue):
         + "  "                      # 79-80
     )
 
+
+
 def pdb_chain(sequence):
     lines = []
     cursor = np.array([0., 0., 0.])
+    transform = np.identity(3)
     i_atom = 0
-    theta = 0.0
     for i_seq, c in enumerate(sequence):
         residue = letter_code[c]
         struct = structures[residue]
-        rotation_matrix = np.array([
+        rotate = np.array([
             [1.0,           0.0,            0.0],
-            [0.0, np.cos(theta), -np.sin(theta)],
-            [0.0, np.sin(theta),  np.cos(theta)]])
+            [0.0, np.cos(helix_step_angle), -np.sin(helix_step_angle)],
+            [0.0, np.sin(helix_step_angle),  np.cos(helix_step_angle)]])
+        new_transform = transform @ rotate
         for atom in struct:
+            transformed_atom = atom._replace(pos = cursor + (new_transform @ atom.pos))
             if atom.name != "N_next":
-                transformed_atom = atom._replace(pos = cursor + (rotation_matrix @ atom.pos))
                 lines.append(pdb_line(transformed_atom, i_atom, i_seq, residue))
                 i_atom += 1
             else: # NOTE: This relies on N_next being the last element in the list!
-                cursor += atom.pos
+                cursor = transformed_atom.pos
                 break
-        theta += helix_step_angle
+        transform = new_transform
     return "\n".join(lines)
 
 
