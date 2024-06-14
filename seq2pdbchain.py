@@ -9,7 +9,7 @@ from structures_codegen import extract_atom_positions
 # Maximum distance from any atom in an amino to the peptide nitrogen
 MAX_DIST_TO_N = 10.0              # [Å] rounded up from 8.48
 ATOM_RADIUS = 0.68                # [Å] atom radius for C, N, O
-COLLISION_DIST = 2.6*ATOM_RADIUS  # [Å] twice atom radius to form a bond, plus 0.6 safety margin
+COLLISION_DIST = 3.*ATOM_RADIUS  # [Å] twice atom radius to form a bond, plus 1.0 safety margin
 COMPACTNESS_ITERATIONS = 200      # number of iterations to spend optimizing compactness
 
 def BETA(n_collisions): # [1/collisions] thermodynamic coolness for Monte Carlo method
