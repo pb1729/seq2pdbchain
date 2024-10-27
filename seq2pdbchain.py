@@ -23,7 +23,7 @@ sys.setrecursionlimit(2048)
 
 def blks_to_pdb(residues, blks):
     lines = []
-    i_atom = 0
+    i_atom = 1
     for i_seq, (residue, blk) in enumerate(zip(residues, blks)):
         for atom in blk:
             lines.append(pdb_line(atom, i_atom, 1 + i_seq, residue))
@@ -127,8 +127,6 @@ def wide_df_search(i, chains, sequence, progress_bar=None):
     """ creates a recursive pile of python generators, it's a little hacky.
         yield value is a list of 'bad chains' that must be readjusted.
         yield value of None means the search has completed. """
-    if progress_bar is None:
-        progress_bar = ProgressBar()
     if i < len(sequence): # generator recursion!
         sub_search_generator = wide_df_search(i + 1, chains, sequence, progress_bar)
     else:
@@ -142,7 +140,7 @@ def wide_df_search(i, chains, sequence, progress_bar=None):
             yield None
             return
         while True:
-            progress_bar.register_progress(i)
+            if progress_bar is not None: progress_bar.register_progress(i)
             bad_chains = []
             for j in bad_chains_sub:
                 while True:
@@ -167,15 +165,33 @@ def wide_df_search(i, chains, sequence, progress_bar=None):
 def pdb_chain(sequence, showprogress=True):
     sequence = [letter_code[c] for c in sequence] # convert to 3 letter code
     chains = [PartialStructure(len(sequence)) for _ in range(SEARCH_WIDTH)]
-    _ = list(wide_df_search(0, chains, sequence)) # do the search
-    sys.stderr.write("generated radii: %s\n" % ",  ".join([str(chain.rough_radius()) for chain in chains]))
+    _ = list(wide_df_search(0, chains, sequence, ProgressBar() if showprogress else None)) # do the search
+    if showprogress:
+        sys.stderr.write("generated radii: %s\n" % ",  ".join([str(chain.rough_radius()) for chain in chains]))
     best_chain_idx = get_smallest_chain(chains)
-    sys.stderr.write("best: %f\n" % chains[best_chain_idx].rough_radius())
+    if showprogress:
+        sys.stderr.write("best: %f\n" % chains[best_chain_idx].rough_radius())
     return blks_to_pdb(sequence, chains[best_chain_idx].blks)
 
 
+def main(args):
+    sequence = args.seq
+    if sequence is None:
+        sequence = input()
+    ans = pdb_chain(sequence, not args.quiet)
+    if args.dest is None:
+        print(ans)
+    else:
+        with open(args.dest, "w") as f:
+            f.write(ans)
+
 if __name__ == "__main__":
-    print(pdb_chain(input()))
+    import argparse
+    parser = argparse.ArgumentParser(prog="seq2pdbchain")
+    parser.add_argument("-s", "--seq", type=str, default=None)
+    parser.add_argument("-d", "--dest", type=str, default=None)
+    parser.add_argument("-q", "--quiet", action="store_true")
+    main(parser.parse_args())
 
 
 
