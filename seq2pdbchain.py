@@ -1,9 +1,9 @@
 import sys
 import numpy as np
 
-from amino_data import letter_code, structures, Atom
-from pdb_util import pdb_line
-from structures_codegen import extract_atom_positions
+from .amino_data import letter_code, structures, Atom
+from .pdb_util import pdb_line
+from .structures_codegen import extract_atom_positions
 
 
 # Maximum distance from any atom in an amino to the peptide nitrogen

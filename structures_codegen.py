@@ -1,7 +1,7 @@
 import numpy as np
 from collections import defaultdict
 
-from pdb_util import parse_pdb, write_xyz, ResidueExample
+from .pdb_util import parse_pdb, write_xyz, ResidueExample
 
 
 # This file is meant for code generation.

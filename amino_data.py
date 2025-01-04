@@ -1,7 +1,7 @@
 import numpy as np
 from collections import namedtuple
 
-from pdb_util import ResidueExample
+from .pdb_util import ResidueExample
 
 
 Atom = namedtuple("Atom", ["name", "pos", "element"])
